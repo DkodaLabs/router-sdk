@@ -1,6 +1,7 @@
 import { Interface } from '@ethersproject/abi'
 import { Currency, CurrencyAmount, Percent, TradeType, validateAndParseAddress, WETH9 } from '@uniswap/sdk-core'
 import { abi } from '@uniswap/swap-router-contracts/artifacts/contracts/interfaces/ISwapRouter02.sol/ISwapRouter02.json'
+import ThrusterABI from "./additions/ThrusterAbi.json";
 import { Trade as V2Trade } from '@uniswap/v2-sdk'
 import {
   encodeRouteToPath,
@@ -27,6 +28,7 @@ import { MixedRouteTrade } from './entities/mixedRoute/trade'
 import { encodeMixedRouteToPath } from './utils/encodeMixedRouteToPath'
 import { MixedRouteSDK } from './entities/mixedRoute/route'
 import { partitionMixedRouteByProtocol, getOutputOfPools } from './utils'
+import { BLAST } from './additions/chains'
 
 const ZERO = JSBI.BigInt(0)
 const REFUND_ETH_PRICE_IMPACT_THRESHOLD = new Percent(JSBI.BigInt(50), JSBI.BigInt(100))
@@ -59,6 +61,11 @@ export interface SwapOptions {
    * Optional information for taking a fee on output.
    */
   fee?: FeeOptions
+
+  /**
+   * The chainId of the chain to execute the swap on.
+   */
+  chainId?: number
 }
 
 export interface SwapAndAddOptions extends SwapOptions {
@@ -84,6 +91,7 @@ type AnyTradeType =
  */
 export abstract class SwapRouter {
   public static INTERFACE: Interface = new Interface(abi)
+  public static THRUSTER_INTERFACE: Interface = new Interface(ThrusterABI)
 
   /**
    * Cannot be constructed.
@@ -156,7 +164,7 @@ export abstract class SwapRouter {
 
       if (singleHop) {
         if (trade.tradeType === TradeType.EXACT_INPUT) {
-          const exactInputSingleParams = {
+          const exactInputSingleParams: any = {
             tokenIn: route.tokenPath[0].address,
             tokenOut: route.tokenPath[1].address,
             fee: route.pools[0].fee,
@@ -166,9 +174,14 @@ export abstract class SwapRouter {
             sqrtPriceLimitX96: 0,
           }
 
-          calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactInputSingle', [exactInputSingleParams]))
+          if (options.chainId === BLAST) {
+            exactInputSingleParams.deadline = options.deadlineOrPreviousBlockhash;
+            calldatas.push(SwapRouter.THRUSTER_INTERFACE.encodeFunctionData('exactInputSingle', [exactInputSingleParams]))
+          } else {
+            calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactInputSingle', [exactInputSingleParams]))
+          }
         } else {
-          const exactOutputSingleParams = {
+          const exactOutputSingleParams: any = {
             tokenIn: route.tokenPath[0].address,
             tokenOut: route.tokenPath[1].address,
             fee: route.pools[0].fee,
@@ -178,29 +191,44 @@ export abstract class SwapRouter {
             sqrtPriceLimitX96: 0,
           }
 
-          calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactOutputSingle', [exactOutputSingleParams]))
+          if (options.chainId === BLAST) {
+            exactOutputSingleParams.deadline = options.deadlineOrPreviousBlockhash;
+            calldatas.push(SwapRouter.THRUSTER_INTERFACE.encodeFunctionData('exactOutputSingle', [exactOutputSingleParams]))
+          } else {
+            calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactOutputSingle', [exactOutputSingleParams]))
+          }
         }
       } else {
         const path: string = encodeRouteToPath(route, trade.tradeType === TradeType.EXACT_OUTPUT)
 
         if (trade.tradeType === TradeType.EXACT_INPUT) {
-          const exactInputParams = {
+          const exactInputParams: any = {
             path,
             recipient,
             amountIn,
             amountOutMinimum: performAggregatedSlippageCheck ? 0 : amountOut,
           }
 
-          calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactInput', [exactInputParams]))
+          if (options.chainId === BLAST) {
+            exactInputParams.deadline = options.deadlineOrPreviousBlockhash;
+            calldatas.push(SwapRouter.THRUSTER_INTERFACE.encodeFunctionData('exactInput', [exactInputParams]))
+          } else {
+            calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactInput', [exactInputParams]))
+          }
         } else {
-          const exactOutputParams = {
+          const exactOutputParams: any = {
             path,
             recipient,
             amountOut,
             amountInMaximum: amountIn,
           }
 
-          calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactOutput', [exactOutputParams]))
+          if (options.chainId === BLAST) {
+            exactOutputParams.deadline = options.deadlineOrPreviousBlockhash;
+            calldatas.push(SwapRouter.THRUSTER_INTERFACE.encodeFunctionData('exactOutput', [exactOutputParams]))
+          } else {
+            calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactOutput', [exactOutputParams]))
+          }
         }
       }
     }
@@ -248,7 +276,7 @@ export abstract class SwapRouter {
         /// For single hop, since it isn't really a mixedRoute, we'll just mimic behavior of V3 or V2
         /// We don't use encodeV3Swap() or encodeV2Swap() because casting the trade to a V3Trade or V2Trade is overcomplex
         if (mixedRouteIsAllV3(route)) {
-          const exactInputSingleParams = {
+          const exactInputSingleParams: any = {
             tokenIn: route.path[0].address,
             tokenOut: route.path[1].address,
             fee: (route.pools as Pool[])[0].fee,
@@ -258,7 +286,12 @@ export abstract class SwapRouter {
             sqrtPriceLimitX96: 0,
           }
 
-          calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactInputSingle', [exactInputSingleParams]))
+          if (options.chainId === BLAST) {
+            exactInputSingleParams.deadline = options.deadlineOrPreviousBlockhash;
+            calldatas.push(SwapRouter.THRUSTER_INTERFACE.encodeFunctionData('exactInputSingle', [exactInputSingleParams]))
+          } else {
+            calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactInputSingle', [exactInputSingleParams]))
+          }
         } else {
           const path = route.path.map((token) => token.address)
 
@@ -293,7 +326,7 @@ export abstract class SwapRouter {
 
           if (mixedRouteIsAllV3(newRoute)) {
             const path: string = encodeMixedRouteToPath(newRoute)
-            const exactInputParams = {
+            const exactInputParams: any = {
               path,
               // By default router holds funds until the last swap, then it is sent to the recipient
               // special case exists where we are unwrapping WETH output, in which case `routerMustCustody` is set to true
@@ -303,7 +336,12 @@ export abstract class SwapRouter {
               amountOutMinimum: !isLastSectionInRoute(i) ? 0 : amountOut,
             }
 
-            calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactInput', [exactInputParams]))
+            if (options.chainId === BLAST) {
+              exactInputParams.deadline = options.deadlineOrPreviousBlockhash;
+              calldatas.push(SwapRouter.THRUSTER_INTERFACE.encodeFunctionData('exactInput', [exactInputParams]))
+            } else {
+              calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('exactInput', [exactInputParams]))
+            }
           } else {
             const exactInputParams = [
               i == 0 ? amountIn : 0, // amountIn

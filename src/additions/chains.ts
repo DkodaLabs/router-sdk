@@ -1,0 +1,1 @@
+export const BLAST = 81457;
