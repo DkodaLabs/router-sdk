@@ -627,8 +627,10 @@ export abstract class SwapRouter {
       calldatas.push(Payments.encodeRefundETH())
     }
 
+    // Thruster adds the deadline in the function call, so we don't need to add it here
+    const validation = options.chainId === BLAST ? undefined : options.deadlineOrPreviousBlockhash;
     return {
-      calldata: MulticallExtended.encodeMulticall(calldatas, options.deadlineOrPreviousBlockhash),
+      calldata: MulticallExtended.encodeMulticall(calldatas, validation),
       value: toHex(inputIsNative ? totalAmountIn.quotient : ZERO),
     }
   }
@@ -724,8 +726,10 @@ export abstract class SwapRouter {
       value = ZERO
     }
 
+    // Thruster adds the deadline in the function call, so we don't need to add it here
+    const validation = options.chainId === BLAST ? undefined : options.deadlineOrPreviousBlockhash;
     return {
-      calldata: MulticallExtended.encodeMulticall(calldatas, options.deadlineOrPreviousBlockhash),
+      calldata: MulticallExtended.encodeMulticall(calldatas, validation),
       value: value.toString(),
     }
   }
