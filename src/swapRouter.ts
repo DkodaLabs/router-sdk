@@ -4,6 +4,7 @@ import { abi } from '@uniswap/swap-router-contracts/artifacts/contracts/interfac
 import ThrusterABI from "./additions/ThrusterAbi.json";
 import { Trade as V2Trade } from '@uniswap/v2-sdk'
 import {
+  ADDRESS_ZERO,
   encodeRouteToPath,
   FeeOptions,
   MethodParameters,
@@ -13,7 +14,7 @@ import {
   Position,
   SelfPermit,
   toHex,
-  Trade as V3Trade,
+  Trade as V3Trade
 } from '@uniswap/v3-sdk'
 import invariant from 'tiny-invariant'
 import JSBI from 'jsbi'
@@ -98,6 +99,17 @@ export abstract class SwapRouter {
    */
   private constructor() {}
 
+  private static getAddressThis(chainId?: number | undefined): string {
+    return chainId === BLAST ? ADDRESS_ZERO : ADDRESS_THIS
+  }
+
+  private static getMsgSender(chainId?: number | undefined): string {
+    if (chainId === BLAST) {
+      throw new Error('MSG_SENDER not supported on BLAST');
+    }
+    return MSG_SENDER;
+  }
+
   /**
    * @notice Generates the calldata for a Swap with a V2 Route.
    * @param trade The V2Trade to encode.
@@ -117,9 +129,9 @@ export abstract class SwapRouter {
 
     const path = trade.route.path.map((token) => token.address)
     const recipient = routerMustCustody
-      ? ADDRESS_THIS
+      ? this.getAddressThis(options.chainId)
       : typeof options.recipient === 'undefined'
-      ? MSG_SENDER
+      ? this.getMsgSender(options.chainId)
       : validateAndParseAddress(options.recipient)
 
     if (trade.tradeType === TradeType.EXACT_INPUT) {
@@ -157,9 +169,9 @@ export abstract class SwapRouter {
       const singleHop = route.pools.length === 1
 
       const recipient = routerMustCustody
-        ? ADDRESS_THIS
+        ? this.getAddressThis(options.chainId)
         : typeof options.recipient === 'undefined'
-        ? MSG_SENDER
+        ? this.getMsgSender(options.chainId)
         : validateAndParseAddress(options.recipient)
 
       if (singleHop) {
@@ -289,9 +301,9 @@ export abstract class SwapRouter {
       const singleHop = route.pools.length === 1
 
       const recipient = routerMustCustody
-        ? ADDRESS_THIS
+        ? this.getAddressThis(options.chainId)
         : typeof options.recipient === 'undefined'
-        ? MSG_SENDER
+        ? this.getMsgSender(options.chainId)
         : validateAndParseAddress(options.recipient)
 
       const mixedRouteIsAllV3 = (route: MixedRouteSDK<Currency, Currency>) => {
@@ -367,7 +379,7 @@ export abstract class SwapRouter {
                 // By default router holds funds until the last swap, then it is sent to the recipient
                 // special case exists where we are unwrapping WETH output, in which case `routerMustCustody` is set to true
                 // and router still holds the funds. That logic bundled into how the value of `recipient` is calculated
-                recipient: isLastSectionInRoute(i) ? recipient : ADDRESS_THIS,
+                recipient: isLastSectionInRoute(i) ? recipient : this.getAddressThis(options.chainId),
                 deadline: options.deadlineOrPreviousBlockhash,
                 amountIn: i == 0 ? amountIn : 0,
                 amountOutMinimum: !isLastSectionInRoute(i) ? 0 : amountOut,
@@ -379,7 +391,7 @@ export abstract class SwapRouter {
                 // By default router holds funds until the last swap, then it is sent to the recipient
                 // special case exists where we are unwrapping WETH output, in which case `routerMustCustody` is set to true
                 // and router still holds the funds. That logic bundled into how the value of `recipient` is calculated
-                recipient: isLastSectionInRoute(i) ? recipient : ADDRESS_THIS,
+                recipient: isLastSectionInRoute(i) ? recipient : this.getMsgSender(options.chainId),
                 amountIn: i == 0 ? amountIn : 0,
                 amountOutMinimum: !isLastSectionInRoute(i) ? 0 : amountOut,
               }
@@ -390,7 +402,7 @@ export abstract class SwapRouter {
               i == 0 ? amountIn : 0, // amountIn
               !isLastSectionInRoute(i) ? 0 : amountOut, // amountOutMin
               newRoute.path.map((token) => token.address), // path
-              isLastSectionInRoute(i) ? recipient : ADDRESS_THIS, // to
+              isLastSectionInRoute(i) ? recipient : this.getAddressThis(options.chainId), // to
             ]
 
             calldatas.push(SwapRouter.INTERFACE.encodeFunctionData('swapExactTokensForTokens', exactInputParams))
