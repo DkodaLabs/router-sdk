@@ -1,6 +1,6 @@
 {
   "name": "wasabi-router-sdk",
-  "version": "0.1.2",
+  "version": "1.8.4",
   "description": "An sdk for routing swaps using Uniswap v2 and Uniswap v3 and Thruster.",
   "publishConfig": {
     "access": "public"
